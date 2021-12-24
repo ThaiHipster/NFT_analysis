@@ -1,0 +1,576 @@
+---
+title: "math_340_final_project_NFTs"
+author: "Robert Alward"
+date: "11/20/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# Libraries
+library(tidyverse)
+#library(anytime)
+library(foreign)
+library(ggplot2)
+library(MASS)
+library(car)
+library(leaps)
+library(stats)
+library(ISLR)
+library(glmnet)
+library(randomForest)
+library(caTools)
+library(varImp)
+
+```
+
+### 1.a Data loading
+
+```{r}
+combo_df <- read.csv("combo_df.csv")
+valid_df <- read.csv("valid_combo_df.csv")
+```
+
+### 1.b Other Data
+
+```{r}
+no_outlier_df <- combo_df[-c(21, 32, 39), ] 
+```
+
+
+### 1.c Exploratory Data Analysis
+
+**Correlation Plots and Analysis**
+```{r}
+cor_chart <- cor(combo_df[,c(2,4,6,8,9,10,11,12,13,14,15,16)])
+cor_chart
+pairs(combo_df[,c(2,4,6,8,9,10,11,12,13,14,15,16)], pch = 19)
+```
+count of unique owners v. count of nfts: 0.919132332
+
+count_unique_trans v. count of nfts: 0.724118672
+
+count_transfers v. count_unique_trans: 0.877428223
+
+count_transfers v. count_nfts: 0.785570252
+
+current_mean_val v. mean_trans_val: 0.838236959
+
+```{r}
+boxplot(combo_df$diff_hr,breaks = 20)
+boxplot(combo_df$mean_trans_val,breaks = 20)
+boxplot(combo_df$count_transfers,breaks = 20)
+boxplot(combo_df$count_unique_trans,breaks = 20)
+boxplot(combo_df$count_unique_owners,breaks = 20)
+boxplot(combo_df$count_nfts,breaks = 20)
+boxplot(combo_df$mint_min_val,breaks = 20)
+boxplot(combo_df$mint_max_val,breaks = 20)
+boxplot(combo_df$mint_mean_val,breaks = 20)
+boxplot(combo_df$current_mean_val,breaks = 20)
+```
+```{r}
+#mean transfer value outliers
+mean_trans_outlier_limit <- 179250 + (18902  - 314123)
+#outlier_transfer <- combo_df[combo_df$mean_trans_val > mean_trans_outlier_limit]
+outlier_transfer <- filter(combo_df, mean_trans_val > (179250 + (18902-314123)))
+outlier_transfer
+```
+
+```{r}
+hist(combo_df$diff_hr,breaks = 20)
+hist(combo_df$mean_trans_val,breaks = 20)
+hist(combo_df$count_transfers,breaks = 20)
+hist(combo_df$count_unique_trans,breaks = 20)
+hist(combo_df$count_unique_owners,breaks = 20)
+hist(combo_df$count_nfts,breaks = 20)
+hist(combo_df$mint_min_val,breaks = 20)
+hist(combo_df$mint_max_val,breaks = 20)
+hist(combo_df$mint_mean_val,breaks = 20)
+hist(combo_df$current_mean_val,breaks = 20)
+```
+```{r}
+summary(combo_df$diff_hr,breaks = 20)
+summary(combo_df$mean_trans_val,breaks = 20)
+summary(combo_df$count_transfers,breaks = 20)
+summary(combo_df$count_unique_trans,breaks = 20)
+summary(combo_df$count_unique_owners,breaks = 20)
+summary(combo_df$count_nfts,breaks = 20)
+summary(combo_df$mint_min_val,breaks = 20)
+summary(combo_df$mint_max_val,breaks = 20)
+summary(combo_df$mint_mean_val,breaks = 20)
+summary(combo_df$current_mean_val,breaks = 20)
+```
+
+Almost all of the datasets are skewed to the right with outliers dragging out the values.
+
+
+#### 2. Basic Modeling
+
+### 2.a Linear Regression Model
+```{r}
+# Simple Linear Regression
+basic.lm1 <- lm(current_mean_val ~ mean_trans_val, data = combo_df)
+summary(basic.lm1)
+```
+
+```{r}
+# Multiple Linear Regression
+full.lm <- lm(current_mean_val ~ diff + mean_trans_val + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val, data = combo_df)
+summary(full.lm)
+```
+
+### 2.b Robust Linear Regression Model:
+
+```{r}
+full.rlm <- rlm(current_mean_val ~ diff + mean_trans_val + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val, data = combo_df)
+summary(full.rlm)
+```
+
+### 2.c Ridge Regression
+
+```{r}
+full.lm.vif <- vif(full.lm)
+full.lm.vif
+mean(full.lm.vif)
+max(full.lm.vif)
+```
+The Max VIF is higher than desired as it is over 10
+The Mean VIF is also very high (18.305) indicating a robust linear regression could be a good approach
+
+
+```{r}
+lam <-  c(0.000, 0.002,0.004,0.006,0.008,0.01,0.02,0.04,0.06,0.08,0.10)
+big_lam <- seq(0,1,.01)
+choice.ridge <- lm.ridge(current_mean_val ~ diff + mean_trans_val + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val, data=combo_df, lambda=big_lam)
+summary(choice.ridge)
+select(choice.ridge)
+
+full.ridge <- lm.ridge(current_mean_val ~ diff + mean_trans_val + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val, data=combo_df, lambda=.11)
+summary(full.ridge)
+full.ridge$coef
+
+combo_df_x = combo_df[,c(6,8,9,10,11,12,13,14,15)]
+combo_df_y = combo_df[,c(16)]
+
+plot(full.ridge)
+```
+
+### 2.d Weighted Least Squares Regression
+
+2.d.1 Plots
+```{r}
+plot(full.lm)
+```
+
+Insights from the residual plots
+
+1. Residual v. Fitted: general growth in the residuals 
+2. Normal QQ: there seem to be relatively normal models but a few outliers near the top of the dataset, notably: 32,21,39 
+  - maybe these should be moved or taken out, these might be able to also take out and search them to see their actual characteristics
+3. Scale Location: shows a pattern of growth in variance which is not good, outliers identified as 32,21,and 39
+4. Residuals v. Leverage: 32, 37,22 all seem to have high outside of cooks distances
+
+```{r}
+plot(combo_df$current_mean_val,full.lm$residuals^2)
+```
+
+supports the hetrosckdasticity
+
+2.d.2 Data Preparation
+*Work on this a bit more*
+```{r}
+#data prep for WLS regression
+sqr_resid <- full.lm$residuals^2
+combo_df_wls <- cbind(combo_df,sqr_resid)
+combo_df_wls
+```
+
+2.d.3 Modeling of WLS *Check this*
+
+```{r}
+wls_practice.lm <- lm(sqr_resid ~ diff + mean_trans_val + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val, data=combo_df_wls)
+
+full.wls <- lm(current_mean_val ~ diff + mean_trans_val + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val, data=combo_df_wls, weights=(1/(wls_practice.lm$fit)^2))
+summary(full.wls)
+```
+
+2.e Modeling with Random forest *Check this*
+
+Model Setup
+```{r}
+names(combo_df)
+```
+diff + mean_trans_val + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val
+
+```{r}
+combo_df_t = combo_df[,c(6,8,9,10,11,12,13,14,15,16)]
+rf <- randomForest(
+  current_mean_val ~ .,
+  data=combo_df_t,
+  importance = T
+)
+```
+
+Edit this
+
+```{r}
+#Conditional=True, adjusts for correlations between predictors.
+i_scores <- varImp(rf, conditional=TRUE)
+#Gathering rownames in 'var'  and converting it to the factor
+#to provide 'fill' parameter for the bar chart. 
+i_scores <- i_scores %>% tibble::rownames_to_column("var") 
+i_scores$var<- i_scores$var %>% as.factor()
+#Plotting the bar and polar charts for comparing variables
+i_bar <- ggplot(data = i_scores) + 
+  geom_bar(
+    stat = "identity",#it leaves the data without count and bin
+    mapping = aes(x = var, y=Overall, fill = var), 
+    show.legend = FALSE,
+    width = 1
+  ) + 
+  labs(x = NULL, y = NULL)
+```
+
+
+2.f Ridge Regression V2
+```{r}
+library(glmnet)
+
+x = as.matrix(combo_df[,c(6,8,9,10,11,12,13,14,15)])
+y_train = combo_df[,c(16)]
+
+x_test = as.matrix(valid_df[,c(6,8,9,10,11,12,13,14,15)])
+y_test = valid_df[,c(16)]
+
+lambdas <- 10^seq(2, -3, by = -.1)
+#ridge_reg = glmnet(x, y_train, nlambda = 25, alpha = 0, family = 'gaussian', lambda = lambdas)
+
+#summary(ridge_reg)
+```
+
+```{r}
+plot(full.ridge)
+```
+
+
+
+#### 3. Model Assement and Comparison
+
+Evaluation Data
+```{r}
+valid_test <- valid_df[,c(6,8,9,10,11,12,13,14,15)]
+valid_y <- valid_df[,c(16)]
+```
+
+Linear Model: Mean Squared Error Evaluation
+
+```{r}
+pred_lm <- predict(full.lm, newdata = valid_test)
+lm_eval <- data.frame(pred_lm, actual = valid_y)
+full.lm.mse <- mean((lm_eval$pred_lm - lm_eval$actual)^2)
+print("Linear MSE")
+full.lm.mse/100000000
+```
+Random Forest Model: Mean Squared Error Evaluation
+
+```{r}
+pred_rf = predict(rf, newdata = valid_test )
+rf_eval <- data.frame(pred_rf, actual = valid_y)
+full.rf.mse <- mean((rf_eval$pred_rf - rf_eval$actual)^2)
+print("RF MSE")
+full.rf.mse/100000000
+```
+Weighted Least Squares Model: Mean Squared Error Evaluation
+
+```{r}
+pred_wls = predict(full.wls, newdata = valid_test)
+wls_eval <- data.frame(pred_wls, actual = valid_y)
+full.wls.mse <- mean((wls_eval$pred_wls - wls_eval$actual)^2)
+print("WLS MSE")
+full.wls.mse/100000000
+```
+Robust Linear Model: Mean Squared Error Evaluation
+
+```{r}
+pred_rlm = predict(full.rlm, newdata = valid_test )
+rlm_eval <- data.frame(pred_rlm, actual = valid_y)
+full.rlm.mse <- mean((rlm_eval$pred_rlm - rlm_eval$actual)^2)
+print("RLM MSE")
+full.rlm.mse/100000000
+```
+
+
+```{r}
+#pred_ridge = predict(full.ridge, newdata = valid_test )
+#pred_ridge
+```
+
+### 3.b Summaries
+
+```{r}
+#summary(full.lm)
+#summary(full.ridge)
+#summary(full.rlm)
+#summary(full.wls)
+```
+Full Linear Model Adjusted R-squared:  0.9352
+Weighted Least Squares Adjusted R-squared: 0.9989 *I don't know if this is appropriate*
+
+### 4. Linear Model Edits
+
+### 4.a Leaps Function Model Choice Using Adj-r2
+```{r}
+names(combo_df)
+```
+
+1 1 0 0 0 0 0 0 1 
+```{r}
+lm.leaps <- leaps(y=combo_df$current_mean_val, x = combo_df[,c(6,8,9,10,11,12,13,14,15)], method = "adjr2")
+lm.leapsfull <- cbind(lm.leaps$which,lm.leaps$adjr2)
+lm.leapsfull
+```
+Leaps Full Results
+
+Best model with fewest predictors
+3 predictors
+1 0 1 0 0 0 0 0 0 1  
+Adjusted R-squared: 0.932952446
+Variables: first_time, mean_trans_value, mint_mean_val
+
+Best linear model
+8 predictors
+1 0 1 1 1 1 1 1 0 1  
+Adjusted R-squared: 0.937810716
+All Variables Except: -last_time, - mint_max_value
+
+General Insights
+- mint max value and last time never included, count_unique_transfers only included once
+
+### 4.b Analysis and Removal of outliers value
+
+```{r}
+no_outlier_df <- combo_df[-c(21, 32, 39), ] 
+```
+
+```{r}
+# Multiple Linear Regression
+no_outlier.lm <- lm(current_mean_val ~ diff + mean_trans_val + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val, data = no_outlier_df)
+summary(no_outlier.lm)
+
+```{r}
+plot(no_outlier.lm)
+shapiro.test(no_outlier.lm$residuals)
+```
+
+Even with removing outliers there is still significant deviance from the assumptions needed to perform a linear model, There is a clear upwards trend in the scale location plot, the normal plot shows significant deviation, but a shaprio test does not conclude significant deviance from normality. Last, even with the removed influential points there are more influential points.
+
+### 4.c Interaction terms
+
+4.c.1 Large Main Effects Interactions
+
+```{r}
+# Interaction Linear Regression w. Mean Transfer Value
+interaction.lm.1 <- lm(current_mean_val ~ diff + mean_trans_val + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val + mean_trans_val*diff + mean_trans_val*count_transfers + mean_trans_val*count_unique_trans + mean_trans_val*count_unique_owners + mean_trans_val*count_nfts + mean_trans_val*mint_mean_val + mean_trans_val*mint_min_val+ mean_trans_val*mint_max_val, data = combo_df)
+summary(interaction.lm.1)
+```
+Multiple statistically significant interactions
+diff:mean_trans_val                 3.151e-08  9.953e-09   3.166  0.00371 ** 
+mean_trans_val:count_transfers      1.032e-04  2.118e-05   4.875 3.91e-05 ***
+mean_trans_val:count_unique_owners  2.391e-04  1.061e-04   2.252  0.03232 *  
+mean_trans_val:count_nfts          -1.640e-04  3.565e-05  -4.600 8.27e-05 ***
+
+
+```{r}
+# Interaction Linear Regression w. Mean Mint Value
+interaction.lm.2 <- lm(current_mean_val ~ diff + mean_trans_val + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val + mint_mean_val*diff + mint_mean_val*count_transfers + mint_mean_val*count_nfts , data = combo_df)
+summary(interaction.lm.2)
+```
+
+4.c.3 Hypothesis checking: mint value, counts
+
+```{r}
+# Interaction Linear Regression w. Mean Mint Value
+interaction.lm.3 <- lm(current_mean_val ~ diff + mean_trans_val + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val + mint_mean_val*diff + mint_mean_val*count_transfers + count_transfers*count_unique_trans + count_unique_trans*count_nfts , data = combo_df)
+summary(interaction.lm.3)
+```
+
+### 4.d Response Variable Editing
+
+**Changing the response variable**
+```{r}
+
+combo_df_log <- combo_df[,c(6,8,9,10,11,12,13,14,15,16)] + 1
+names(combo_df_log)
+combo_df_log <- log(combo_df_log[,2:10])
+#combo_df$log_mean_val <- log(combo_df)
+hist(combo_df$current_mean_val, breaks = 22)
+hist(combo_df_log$current_mean_val, breaks = 22)
+```
+
+**Checking skewness** 
+```{r}
+library(e1071)
+mean_val = combo_df$current_mean_val
+log_mean_val = combo_df_log$current_mean_val
+skewness(mean_val)
+skewness(log_mean_val)
+```
+removed value at 40 because it was 0 and didn't allow log transform. The log transformation majorly reduces the skew
+
+**Linear model of Log Transformed Data**
+
+Check Diff variable
+
+```{r}
+transform.lm <- lm(current_mean_val ~ mean_trans_val + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val, data = combo_df_log)
+summary(transform.lm)
+#summary(full.lm)
+```
+Transforming the variables with the log transform significantly reduces the R-squared
+
+### 4.e Comparison of Performance w/ MSE
+
+⚠ Don’t include an interaction between 2 variables just because they are correlated:
+```{r}
+pred_lm <- predict(full.lm, newdata = valid_test)
+lm_eval <- data.frame(pred_lm, actual = valid_y)
+full.lm.mse <- mean((lm_eval$pred_lm - lm_eval$actual)^2)
+full.lm.mse/100000000
+```
+
+```{r}
+pred_lm <- predict(interaction.lm.1, newdata = valid_test)
+lm_eval <- data.frame(pred_lm, actual = valid_y)
+full.lm.mse <- mean((lm_eval$pred_lm - lm_eval$actual)^2)
+full.lm.mse/100000000
+```
+
+```{r}
+pred_lm <- predict(no_outlier.lm, newdata = valid_test)
+lm_eval <- data.frame(pred_lm, actual = valid_y)
+full.lm.mse <- mean((lm_eval$pred_lm - lm_eval$actual)^2)
+full.lm.mse/100000000
+```
+*Problem here*
+
+```{r}
+valid_df_log <- valid_df[,c(8,9,10,11,12,13,14,15,16)] + 1
+names(valid_df_log)
+valid_df_log <- log(valid_df_log[,1:9])
+
+pred_lm <- predict(no_outlier.lm, newdata = valid_df_log)
+lm_eval <- data.frame(pred_lm, actual = valid_y)
+full.lm.mse <- mean((lm_eval$pred_lm - lm_eval$actual)^2)
+full.lm.mse/100000000
+```
+
+### 5. Removal of mean transfer value
+
+5.a Exploratory Modeling
+**Exploratory Modeling**
+
+```{r}
+
+plot(combo_df$current_mean_val,combo_df$mean_trans_val)
+plot(no_outlier_df$current_mean_val,no_outlier_df$mean_trans_val)
+```
+
+```{r}
+#Plot of Mean value and Mean Transfer value
+plot(combo_df$current_mean_val,combo_df$mean_trans_val)
+```
+
+```{r}
+# Only Transfer Regression
+transfer.lm <- lm(current_mean_val ~ mean_trans_val, data = combo_df)
+#summary(transfer.lm)
+```
+
+
+# Without Transfer Mean Value
+[1] "nft_address"         "first_time"          "first_time_hr"       "last_time"           "last_time_hr"       
+ [6] "diff"                "diff_hr"             "mean_trans_val"      "count_transfers"     "count_unique_trans" 
+[11] "count_unique_owners" "count_nfts"          "mint_min_val"        "mint_max_val"        "mint_mean_val"      
+[16] "current_mean_val"   
+
+
+```{r}
+# Leaps Regression without Transfers
+lm.leaps.partial <- leaps(y=combo_df$current_mean_val, x = combo_df[,c(6,9,10,11,12,13,14,15)], method = "adjr2")
+lm.leaps.partial.c <- cbind(lm.leaps.partial$which,lm.leaps.partial$adjr2)
+#lm.leaps.partial.c
+```
+2 0 0 0 0 0 1 0 1  0.140156198
+
+Variables: last_time and mint_mean_val
+
+5.b Model Intialization
+
+**Linear Model**
+```{r}
+#Without Mean Transfers Regression
+partial.lm <- lm(current_mean_val ~ diff + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val, data = combo_df)
+summary(partial.lm)
+```
+
+**Robust Linear Model**
+```{r}
+#Without Mean Transfers Regression
+partial.rlm <- rlm(current_mean_val ~ diff + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val, data = combo_df)
+summary(partial.rlm)
+```
+
+**Weighted Least Square Regression**
+```{r}
+sqr_resid <- partial.lm$residuals^2
+combo_df_wls <- cbind(combo_df,sqr_resid)
+combo_df_wls
+
+wls_practice.lm <- lm(sqr_resid ~ diff + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val, data=combo_df_wls)
+
+partial.wls <- lm(current_mean_val ~ diff + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val, data=combo_df_wls, weights=(1/(wls_practice.lm$fit)^2))
+summary(partial.wls)
+```
+**Random Forest**
+```{r}
+combo_df_t2 = combo_df[,c(6,9,10,11,12,13,14,15,16)]
+partial_rf <- randomForest(
+  current_mean_val ~ .,
+  data=combo_df_t2
+)
+```
+
+
+```{r}
+pred_lm <- predict(partial.lm, newdata = valid_test)
+lm_eval <- data.frame(pred_lm, actual = valid_y)
+full.lm.mse <- mean((lm_eval$pred_lm - lm_eval$actual)^2)
+print("No Transfer Linear MSE")
+full.lm.mse/100000000
+```
+Random Forest Model: Mean Squared Error Evaluation
+
+```{r}
+pred_rf = predict(partial_rf, newdata = valid_test )
+rf_eval <- data.frame(pred_rf, actual = valid_y)
+full.rf.mse <- mean((rf_eval$pred_rf - rf_eval$actual)^2)
+print("No Transfer RF MSE")
+full.rf.mse/100000000
+```
+Weighted Least Squares Model: Mean Squared Error Evaluation
+
+```{r}
+pred_wls = predict(partial.wls, newdata = valid_test)
+wls_eval <- data.frame(pred_wls, actual = valid_y)
+full.wls.mse <- mean((wls_eval$pred_wls - wls_eval$actual)^2)
+print("No Transfer WLS MSE")
+full.wls.mse/100000000
+```
+Robust Linear Model: Mean Squared Error Evaluation
+
+```{r}
+pred_rlm = predict(partial.rlm, newdata = valid_test )
+rlm_eval <- data.frame(pred_rlm, actual = valid_y)
+full.rlm.mse <- mean((rlm_eval$pred_rlm - rlm_eval$actual)^2)
+print("No Transfer RLM MSE")
+full.rlm.mse/100000000
+```

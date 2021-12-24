@@ -1,0 +1,157 @@
+---
+title: "Math 340 Final Project EDA Outputs"
+author: "Robert Alward"
+date: "12/09/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(foreign)
+library(ggplot2)
+library(MASS)
+library(car)
+library(leaps)
+library(stats)
+library(ISLR)
+library(glmnet)
+library(randomForest)
+library(caTools)
+library(varImp)
+```
+
+### 1.a Data loading
+
+```{r}
+combo_df <- read.csv("combo_df.csv")
+valid_df <- read.csv("valid_combo_df.csv")
+no_outlier_df <- combo_df[-c(21, 32, 39), ] 
+```
+
+```{r}
+combo_df_log <- combo_df[,c(6,8,9,10,11,12,13,14,15,16)] + 1
+combo_df_log <- log(combo_df_log[,2:10])
+```
+
+
+### 1.b Exploratory Data Analysis
+
+*Correlation Matrix*
+```{r}
+cor_chart <- cor(combo_df[,c(2,4,6,8,9,10,11,12,13,14,15,16)])
+cor_chart
+str(as.data.frame(cor_chart))
+write.csv(as.data.frame(cor_chart),"correlation_chart.csv")
+```
+
+*Correlation Plot*
+```{r}
+pairs(combo_df[,c(6,8,9,10,11,12,13,14,15,16)], pch = 19)
+```
+
+*Boxplots*
+```{r}
+par(mfrow = c(2,2))
+boxplot(combo_df$diff_hr, main="Time Difference from First Minitng \n to Most Recent Transfer", ylab="Time")
+boxplot(combo_df$mean_trans_val, main="Mean Value During NFT Transfer", ylab="microether (10^-6 ETH)")
+boxplot(combo_df$count_transfers,main="Count of NFT Transfers", ylab="count")
+boxplot(combo_df$count_unique_trans,main="Count of Transfers of Unique NFTs", ylab="count")
+boxplot(combo_df$count_unique_owners,main="Count of Unique Owners of NFTs", ylab="count")
+boxplot(combo_df$count_nfts,main="Count of Copies of an NFT", ylab="count")
+boxplot(combo_df$mint_min_val,main="Minimum Value of NFT Copy at Miniting", ylab="microether (10^-6 ETH)")
+boxplot(combo_df$mint_max_val,main="Maximum Value of NFT Copy at Miniting", ylab="microether (10^-6 ETH)")
+boxplot(combo_df$mint_mean_val,main="Mean Value of NFT at Miniting", ylab="microether (10^-6 ETH)")
+boxplot(combo_df$current_mean_val,main="Current Mean Value of NFT", ylab="microether (10^-6 ETH)")
+```
+
+*Outlier Dataset based on Mean Transfer Value*
+```{r}
+# Mean transfer value outliers
+out <- boxplot.stats(combo_df$mean_trans_val)$out
+out_ind <- which(combo_df$mean_trans_val %in% c(out))
+out_df <- combo_df[out_ind,]
+write.csv(as.data.frame(out_df),"outlier_df.csv")
+```
+
+*Histogram*
+```{r}
+par(mfrow = c(2,2))
+hist(combo_df$diff_hr,main="Time Difference from First Minting \n to Most Recent Transfer", xlab="Time(seconds)", breaks = 20)
+hist(combo_df$mean_trans_val,main="Mean Value During NFT Transfer", xlab="microether (10^-6 ETH)", breaks = 20)
+hist(combo_df$count_transfers,main="Count of NFT Transfers", xlab="count", breaks = 20)
+hist(combo_df$count_unique_trans,main="Count of Transfers of Unique NFTs", xlab="count",breaks = 20)
+hist(combo_df$count_unique_owners,main="Count of Unique Owners of NFTs",xlab="count", breaks = 20)
+hist(combo_df$count_nfts,main="Count of Copies of an NFT", xlab="count",breaks = 20)
+hist(combo_df$mint_min_val,main="Minimum Value of NFT Copy at Miniting",xlab="microether (10^-6 ETH)", breaks = 20)
+hist(combo_df$mint_max_val,main="Maximum Value of NFT Copy at Miniting",xlab="microether (10^-6 ETH)",breaks = 20)
+hist(combo_df$mint_mean_val,main="Mean Value of NFT at Miniting", xlab="microether (10^-6 ETH)",breaks = 20)
+hist(combo_df$current_mean_val,main="Current Mean Value of NFT", xlab="microether (10^-6 ETH)",breaks = 20)
+```
+*Summary Statistics*
+
+```{r}
+summary(combo_df$diff_hr,breaks = 20)
+summary(combo_df$mean_trans_val,breaks = 20)
+summary(combo_df$count_transfers,breaks = 20)
+summary(combo_df$count_unique_trans,breaks = 20)
+summary(combo_df$count_unique_owners,breaks = 20)
+summary(combo_df$count_nfts,breaks = 20)
+summary(combo_df$mint_min_val,breaks = 20)
+summary(combo_df$mint_max_val,breaks = 20)
+summary(combo_df$mint_mean_val,breaks = 20)
+summary(combo_df$current_mean_val,breaks = 20)
+```
+
+*Residual Plots*
+
+```{r}
+# Multiple Linear Regression
+full.lm <- lm(current_mean_val ~ diff + mean_trans_val + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val, data = combo_df)
+plot(full.lm)
+```
+
+*Shapiro Test*
+```{r}
+shapiro.test(full.lm$residuals)
+```
+
+
+*Variance Inflation Factor*
+```{r}
+full.lm.vif <- vif(full.lm)
+full.lm.vif
+mean(full.lm.vif)
+max(full.lm.vif)
+```
+The Max VIF is higher than desired as it is over 10
+The Mean VIF is also very high (18.305) indicating a robust linear regression could be a good approach
+
+*Ridge Trace Plots*
+```{r}
+big_lam <- seq(0,1,.01)
+full.ridge <- lm.ridge(current_mean_val ~ diff + mean_trans_val + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val, data=combo_df, lambda=big_lam)
+select(full.ridge)
+
+plot(full.ridge)
+```
+*Plot of Current Mean Value and Squared Residuals*
+
+```{r}
+plot(combo_df$current_mean_val,full.lm$residuals^2, main = "Plot of Current Mean Value and Squared Residuals",xlab = "Current Mean Value (microether (10^-6 ETH))", ylab = "Squared Residuals")
+```
+
+
+*Log Transformed Data*
+```{r}
+hist(combo_df_log$mean_trans_val,main="Mean Value During NFT Transfer", xlab="microether (10^-6 ETH)", breaks = 20)
+hist(combo_df_log$count_transfers,main="Count of NFT Transfers", xlab="count", breaks = 20)
+hist(combo_df_log$count_unique_trans,main="Count of Transfers of Unique NFTs", xlab="count",breaks = 20)
+hist(combo_df_log$count_unique_owners,main="Count of Unique Owners of NFTs",xlab="count", breaks = 20)
+hist(combo_df_log$count_nfts,main="Count of Copies of an NFT", xlab="count",breaks = 20)
+hist(combo_df_log$mint_min_val,main="Minimum Value of NFT Copy at Miniting",xlab="microether (10^-6 ETH)", breaks = 20)
+hist(combo_df_log$mint_max_val,main="Maximum Value of NFT Copy at Miniting",xlab="microether (10^-6 ETH)",breaks = 20)
+hist(combo_df_log$mint_mean_val,main="Mean Value of NFT at Miniting", xlab="microether (10^-6 ETH)",breaks = 20)
+hist(combo_df_log$current_mean_val,main="Log Transformed Current Mean Value of NFT", xlab="microether (10^-6 ETH)",breaks = 20)
+```
+
+

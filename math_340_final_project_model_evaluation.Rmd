@@ -1,0 +1,365 @@
+---
+title: "math_340_final_project_NFTs"
+author: "Robert Alward"
+date: "11/20/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# Libraries
+library(tidyverse)
+#library(anytime)
+library(foreign)
+library(ggplot2)
+library(MASS)
+library(car)
+library(leaps)
+library(stats)
+library(ISLR)
+library(glmnet)
+library(randomForest)
+library(caTools)
+library(varImp)
+```
+
+*General Data*
+```{r}
+combo_df <- read.csv("combo_df.csv")
+valid_df <- read.csv("valid_combo_df.csv")
+no_outlier_df <- combo_df[-c(21, 32, 39), ] 
+```
+
+*Test Data*
+```{r}
+test_x <- valid_df[,c(6,8,9,10,11,12,13,14,15)]
+test_y <- valid_df[,c(16)]
+```
+
+*Log Transformed Data*
+```{r}
+combo_df_log <- combo_df[,c(6,8,9,10,11,12,13,14,15,16)] + 1
+combo_df_log <- log(combo_df_log[,2:10])
+combo_df_log$diff <- combo_df$diff
+```
+
+*Test Data*
+```{r}
+test_x <- valid_df[,c(6,8,9,10,11,12,13,14,15)]
+test_y <- valid_df[,c(16)]
+```
+
+*Log Transformed Data*
+```{r}
+test_df_log <- valid_df[,c(6,8,9,10,11,12,13,14,15,16)] + 1
+test_df_log <- log(test_df_log[,2:10])
+test_df_log$diff <- valid_df$diff
+test_x_log <- test_df_log[,c(1:8,10)]
+test_y_log <- test_df_log[,9]
+```
+### *Model Initialization*
+
+# 1. Multiple Linear Regression
+```{r}
+full.lm <- lm(current_mean_val ~ diff + mean_trans_val + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val, data = combo_df)
+summary(full.lm)
+```
+
+# 2 Robust Linear Regression
+```{r}
+full.rlm <- rlm(current_mean_val ~ diff + mean_trans_val + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val, data = combo_df)
+summary(full.rlm)
+```
+
+# 3 Ridge Regression
+```{r}
+full.ridge <- lm.ridge(current_mean_val ~ diff + mean_trans_val + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val, data=combo_df, lambda=seq(0, 30, 1e-3))
+
+best.ridge <- lm.ridge(current_mean_val ~ diff + mean_trans_val + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val, data=combo_df, lambda=.11)
+
+#summary(full.ridge)
+select(full.ridge)
+names(best.ridge)
+best.ridge$coef
+```
+
+# 4 Weighted Least Squares Regression
+```{r}
+#Data prep for WLS regression
+sqr_resid <- full.lm$residuals^2
+combo_df_wls <- cbind(combo_df,sqr_resid)
+
+wls_practice.lm <- lm(sqr_resid ~ diff + mean_trans_val + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val, data=combo_df_wls)
+
+full.wls <- lm(current_mean_val ~ diff + mean_trans_val + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val, data=combo_df_wls, weights=(1/(wls_practice.lm$fit)^2))
+summary(full.wls)
+```
+
+# 5 Modeling with Random forest 
+```{r}
+combo_df_t = combo_df[,c(6,8,9,10,11,12,13,14,15,16)]
+rf <- randomForest(
+  current_mean_val ~ .,
+  data=combo_df_t,
+  importance = T
+)
+```
+
+
+# 6. Three Predictor Linear Model
+```{r}
+three.lm <- lm(current_mean_val ~ diff + mean_trans_val + mint_mean_val, data = combo_df)
+summary(three.lm)
+```
+
+# 7. Eight Predictor Linear Model
+```{r}
+eight.lm <- lm(current_mean_val ~ diff + mean_trans_val + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_mean_val, data = combo_df)
+summary(eight.lm)
+```
+
+# 8. Linear Model: Mean Transfer Value Interaction
+```{r}
+interaction.trans.lm <- lm(current_mean_val ~ diff + mean_trans_val + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val + mean_trans_val*diff + mean_trans_val*count_transfers + mean_trans_val*count_unique_trans + mean_trans_val*count_unique_owners + mean_trans_val*count_nfts + mean_trans_val*mint_mean_val + mean_trans_val*mint_min_val+ mean_trans_val*mint_max_val, data = combo_df)
+summary(interaction.trans.lm)
+```
+
+# 9. Linear Model: Mean Mint Value Interaction
+```{r}
+interaction.mint.lm <- lm(current_mean_val ~ diff + mean_trans_val + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val + mint_mean_val*diff + mint_mean_val*count_transfers + mint_mean_val*count_nfts , data = combo_df)
+summary(interaction.mint.lm)
+```
+
+# 10. Log Linear Model
+```{r}
+log.lm <- lm(current_mean_val ~ diff + mean_trans_val + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val , data = combo_df_log)
+summary(log.lm)
+```
+
+# 11. Transfer Linear Model
+```{r}
+transfer.lm <- lm(current_mean_val ~ mean_trans_val , data = combo_df)
+summary(transfer.lm)
+```
+
+# 12. No Transfer Linear Model
+```{r}
+no.transfer.lm <- lm(current_mean_val ~ diff + count_transfers + count_unique_trans + count_unique_owners + count_nfts + mint_min_val + mint_max_val + mint_mean_val, data = combo_df)
+summary(no.transfer.lm)
+```
+
+
+
+#### *Mean Squared Error*
+
+# Evaluation Data
+```{r}
+valid_test <- valid_df[,c(6,8,9,10,11,12,13,14,15)]
+valid_y <- valid_df[,c(16)]
+```
+
+# 1. Linear Model: Mean Squared Error Evaluation
+```{r}
+pred_lm <- predict(full.lm, newdata = valid_test)
+lm_eval <- data.frame(pred_lm, actual = valid_y)
+full.lm.mse <- mean((lm_eval$pred_lm - lm_eval$actual)^2)
+print("Linear MSE")
+full.lm.mse/100000000
+print("RMSE")
+sqrt(full.lm.mse)
+print("AIC")
+AIC(full.lm)
+print("BIC")
+BIC(full.lm)
+print("Adj. R-squared")
+summary(full.lm)$adj.r.squared
+```
+
+# 2. Robust Linear Regression: Mean Squared Error Evaluation
+```{r}
+pred_rlm = predict(full.rlm, newdata = valid_test )
+rlm_eval <- data.frame(pred_rlm, actual = valid_y)
+full.rlm.mse <- mean((rlm_eval$pred_rlm - rlm_eval$actual)^2)
+print("RLM MSE")
+full.rlm.mse/100000000
+print("RMSE")
+sqrt(full.rlm.mse)
+print("AIC")
+AIC(full.rlm)
+print("BIC")
+BIC(full.rlm)
+print("Adj. R-squared")
+summary(full.rlm)$adj.r.squared
+```
+
+# 3. Ridge Regression: Mean Squared Error Evaluation
+```{r}
+predicted = full.ridge$ym +
+  scale(test_x, center = full.ridge$xm, scale = full.ridge$scales) %*%
+  full.ridge$coef[, which.min(full.ridge$GCV)]
+as.numeric(predicted)
+```
+
+```{r}
+ridge.mse <- mean((predicted - test_y)^2)
+print("Ridge MSE")
+ridge.mse/100000000
+print("RMSE")
+sqrt(ridge.mse)
+print("AIC")
+AIC(ridge.lm)
+print("BIC")
+BIC(ridge.lm)
+print("Adj. R-squared")
+summary(ridge.lm)$adj.r.squared
+```
+
+# 4. Weighted Least Squares Model: Mean Squared Error Evaluation
+```{r}
+pred_wls = predict(full.wls, newdata = valid_test)
+wls_eval <- data.frame(pred_wls, actual = valid_y)
+full.wls.mse <- mean((wls_eval$pred_wls - wls_eval$actual)^2)
+print("WLS MSE")
+full.wls.mse/100000000
+print("RMSE")
+sqrt(full.wls.mse)
+print("AIC")
+AIC(full.wls)
+print("BIC")
+BIC(full.wls)
+print("Adj. R-squared")
+summary(full.wls)$adj.r.squared
+```
+
+# 5. Random Forest Model: Mean Squared Error Evaluation
+```{r}
+pred_rf = predict(rf, newdata = valid_test )
+rf_eval <- data.frame(pred_rf, actual = valid_y)
+full.rf.mse <- mean((rf_eval$pred_rf - rf_eval$actual)^2)
+print("RF MSE")
+full.rf.mse/100000000
+print("RMSE")
+sqrt(full.rf.mse)
+```
+
+# 6. Three Predictor Linear Model: Mean Squared Error Evaluation
+```{r}
+pred_lm <- predict(three.lm, newdata = valid_test)
+lm_eval <- data.frame(pred_lm, actual = valid_y)
+three.lm.mse <- mean((lm_eval$pred_lm - lm_eval$actual)^2)
+print("Three Linear MSE")
+three.lm.mse/100000000
+print("RMSE")
+sqrt(three.lm.mse)
+print("AIC")
+AIC(three.lm)
+print("BIC")
+BIC(three.lm)
+print("Adj. R-squared")
+summary(three.lm)$adj.r.squared
+```
+
+# 7. Eight Predictor Linear Model: Mean Squared Error Evaluation
+```{r}
+pred_lm <- predict(eight.lm, newdata = valid_test)
+lm_eval <- data.frame(pred_lm, actual = valid_y)
+eight.lm.mse <- mean((lm_eval$pred_lm - lm_eval$actual)^2)
+print("Eight Linear MSE")
+eight.lm.mse/100000000
+print("RMSE")
+sqrt(eight.lm.mse)
+print("AIC")
+AIC(eight.lm)
+print("BIC")
+BIC(eight.lm)
+print("Adj. R-squared")
+summary(eight.lm)$adj.r.squared
+```
+
+# 8. Transfer Interaction Linear Model
+```{r}
+pred_lm <- predict(interaction.trans.lm, newdata = valid_test)
+lm_eval <- data.frame(pred_lm, actual = valid_y)
+transferint.lm.mse <- mean((lm_eval$pred_lm - lm_eval$actual)^2)
+print("Transfer Interaction Linear MSE")
+transferint.lm.mse/100000000
+print("RMSE")
+sqrt(transferint.lm.mse)
+print("AIC")
+AIC(interaction.trans.lm)
+print("BIC")
+BIC(interaction.trans.lm)
+print("Adj. R-squared")
+summary(interaction.trans.lm)$adj.r.squared
+```
+
+# 9. Mint Interaction Linear Model: Mean Squared Error Evaluation
+```{r}
+pred_lm <- predict(interaction.mint.lm, newdata = valid_test)
+lm_eval <- data.frame(pred_lm, actual = valid_y)
+mintint.lm.mse <- mean((lm_eval$pred_lm - lm_eval$actual)^2)
+print("Mint Interaction Linear MSE")
+mintint.lm.mse/100000000
+sqrt(mintint.lm.mse)
+print("RMSE")
+sqrt(mintint.lm.mse)
+print("AIC")
+AIC(interaction.mint.lm)
+print("BIC")
+BIC(interaction.mint.lm)
+print("Adj. R-squared")
+summary(interaction.mint.lm)$adj.r.squared
+```
+
+# 10. Log Linear Model: Mean Squared Error Evaluation
+
+```{r}
+log_pred_lm <- predict(log.lm, newdata = test_x_log)
+pred_lm <- exp(log_pred_lm)
+
+lm_eval <- data.frame(pred_lm, actual = valid_y)
+log.lm.mse <- mean((lm_eval$pred_lm - lm_eval$actual)^2)
+print("Log Linear MSE")
+log.lm.mse/100000000
+print("RMSE")
+sqrt(log.lm.mse)
+print("AIC")
+AIC(log.lm)
+print("BIC")
+BIC(log.lm)
+print("Adj. R-squared")
+summary(log.lm)$adj.r.squared
+```
+
+# 11. Only Transfer Linear Model: Mean Squared Error Evaluation
+```{r}
+pred_lm <- predict(transfer.lm, newdata = valid_test)
+lm_eval <- data.frame(pred_lm, actual = valid_y)
+transfer.lm.mse <- mean((lm_eval$pred_lm - lm_eval$actual)^2)
+print("Only Transfer Linear MSE")
+transfer.lm.mse/100000000
+print("RMSE")
+sqrt(transfer.lm.mse)
+print("AIC")
+AIC(transfer.lm)
+print("BIC")
+BIC(transfer.lm)
+print("Adj. R-squared")
+summary(transfer.lm)$adj.r.squared
+```
+
+# 12. No Transfer Linear Model: Mean Squared Error Evaluation
+```{r}
+pred_lm <- predict(no.transfer.lm, newdata = valid_test)
+lm_eval <- data.frame(pred_lm, actual = valid_y)
+no.transfer.lm.mse <- mean((lm_eval$pred_lm - lm_eval$actual)^2)
+print("No Transfer Linear MSE")
+no.transfer.lm.mse/100000000
+print("RMSE")
+sqrt(no.transfer.lm.mse)
+print("AIC")
+AIC(no.transfer.lm)
+print("BIC")
+BIC(no.transfer.lm)
+print("Adj. R-squared")
+summary(no.transfer.lm)$adj.r.squared
+```
